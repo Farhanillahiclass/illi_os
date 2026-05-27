@@ -1,0 +1,126 @@
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Package distribution
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+
+# Streamlit
+.streamlit/
+.streamlit/config.toml
+*.streamlit-run.log
+
+# Local memory & database
+.illi_memory/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs & diagnostics
+logs/
+*.log
+diagnostic_*.txt
+
+# Screenshots & media (local testing only)
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Windows specific
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+.windows-terminal/
+
+# Browser profiles & cache
+browser_profiles/
+.cache/
+
+# System temp
+.tmp
+.trash
+
+# Shell scripts artifacts
+*.ps1.log
+
+# Application-specific
+.illi_browser_profiles/
+remote_credentials.json
+trusted_contacts.json.bak
+
+# Streamlit secrets (if used)
+.streamlit/secrets.toml
+secrets/
+
+# Don't commit sensitive files
+*.key
+*.pem
+*.crt
+config_local.json
+
+# Pipeline artifacts
+reports/
+data/
+artifacts/
+
+# Playwright browser binaries (optional)
+# Uncomment if you want to ignore them:
+# .cache/ms-playwright/

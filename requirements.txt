@@ -1,0 +1,41 @@
+# Core UI & Web Framework
+streamlit>=1.20.0
+streamlit-option-menu>=0.3.0
+
+# System & Performance Monitoring
+psutil>=5.9.0
+
+# Voice & Audio Processing
+SpeechRecognition>=3.8.1
+pyttsx3>=2.90
+
+# Image Processing
+Pillow>=9.0.0
+
+# Browser Automation & GUI
+playwright>=1.40.0
+pyautogui==0.9.54
+selenium>=4.10.0
+
+# Input & Hotkey Management
+pynput>=1.8.0
+keyboard>=0.13.5
+
+# Windows API & Audio Control
+comtypes>=1.1.10
+pycaw>=20181226
+pywin32>=305
+
+# Data Visualization
+matplotlib>=3.7.0
+networkx>=3.0
+
+# Async & Threading
+trio>=0.22.0
+
+# Local Database & Storage
+sqlalchemy>=2.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
