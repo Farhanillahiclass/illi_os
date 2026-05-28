@@ -1,3 +1,4 @@
+"""Remote Gateway Terminal for ILLI: Monitors incoming messages and executes directives."""
 import asyncio
 import json
 import os
@@ -5,13 +6,13 @@ import re
 import smtplib
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import psutil
 import speech_recognition as sr
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents # Adjust for new illi/automation/ structure
 INBOX_DIR = BASE_DIR / "remote_inbox"
 OUTBOX_DIR = BASE_DIR / "remote_outbox"
 TRUSTED_FILE = BASE_DIR / "trusted_contacts.json"
@@ -60,10 +61,11 @@ def clear_recycle_bin() -> str:
 def send_email_draft(payload: str) -> str:
     draft_folder = BASE_DIR / "email_drafts"
     draft_folder.mkdir(exist_ok=True)
-    draft_file = draft_folder / f"draft_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
+    now = datetime.now(timezone.utc)
+    draft_file = draft_folder / f"draft_{now.strftime('%Y%m%d_%H%M%S')}.txt"
     with open(draft_file, "w", encoding="utf-8") as handle:
         handle.write("ILLI OS Email Draft\n")
-        handle.write(f"Generated: {datetime.utcnow().isoformat()}Z\n")
+        handle.write(f"Generated: {now.isoformat()}\n")
         handle.write("---\n")
         handle.write(payload)
     try:

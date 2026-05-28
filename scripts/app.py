@@ -1,5 +1,5 @@
 """
-ILLI OS v1.2.5 - Main Application Orchestrator
+ILLI OS - Main Application Orchestrator
 Ghost-Protocol HUD + Advanced Automation Engine + Local Cognition
 """
 
@@ -11,7 +11,7 @@ from pathlib import Path
 import streamlit as st
 
 # ILLI AI Modular Components
-from illi_ai.interface import (
+from illi.ui.interface import (
     inject_ghost_protocol_css,
     render_metric_dial,
     render_neural_core_canvas,
@@ -19,17 +19,17 @@ from illi_ai.interface import (
     render_task_tracker,
     render_shell_stream,
     initialize_hud_session_state,
-    add_shell_log,
     fetch_live_metrics,
     render_three_column_hud,
     render_whiteboard_hub
 )
-from illi_ai.automation import get_master_agent, AutomationTask, TaskPriority
-from illi_ai.automation import DeepOSOverlordPowerManager
-from illi_ai.core import get_memory_system, get_voice_engine, get_mic_calibration
-from illi_ai.hotkeys import start_listener
-from illi_ai.power import clear_recycle_bin, restart, shutdown, sleep
-from illi_ai.wallpaper import generate_hex_grid, set_wallpaper
+from illi.automation.master_agent import get_master_agent
+from illi.automation.power_manager import DeepOSOverlordPowerManager
+from illi.brain.core import get_memory_system, get_voice_engine, get_mic_calibration
+from illi.automation.hotkeys import start_listener
+from illi.automation.power_manager import clear_recycle_bin, restart, shutdown, sleep
+from illi.ui.wallpaper import generate_hex_grid, set_wallpaper
+from illi.utils.logger import add_shell_log
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -48,7 +48,7 @@ def init_system():
 
     # Initialize Sub-Agent Pool
     if "agent" not in st.session_state:
-        st.session_state["agent"] = get_master_agent(
+        st.session_state["agent"] = get_master_agent( # This will be refactored to illi.agents.master_agent
             callback=lambda e: add_shell_log(f"Agent: {e.get('name')} {e.get('type')}", "CORE")
         )
 
@@ -152,7 +152,7 @@ def main():
     with c2:
         search_q = st.text_input("Launcher", placeholder="e.g. chrome", label_visibility="collapsed")
         if st.button("🚀 EXECUTE", use_container_width=True):
-            if search_q:
+            if search_q: # This will be refactored to illi.automation.app_launcher
                 DeepOSOverlordPowerManager.launch_application(search_q)
                 add_shell_log(f"Application booter initiated: {search_q}", "CORE")
     with c3:

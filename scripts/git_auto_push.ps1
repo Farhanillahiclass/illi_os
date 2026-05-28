@@ -5,7 +5,8 @@
 param(
     [string]$Message = "",
     [string]$Branch = "main",
-    [switch]$Force = $false
+    [switch]$Force = $false,
+    [string]$Tag = "" # New parameter for version tagging
 )
 
 function Write-Status {
@@ -126,6 +127,20 @@ if ($PushResult -eq 0) {
     Write-Status "You can retry with: git push origin $Branch"
     exit 1
 }
+
+if (-not [string]::IsNullOrWhiteSpace($Tag)) {
+    Write-Status "Creating Git tag: $Tag" "Yellow"
+    git tag $Tag
+    $TagResult = $LASTEXITCODE
+    if ($TagResult -ne 0) {
+        Write-Error-Status "Failed to create tag: $Tag"
+        # Continue with push, but warn
+    } else {
+        Write-Status "Pushing tag to remote..." "Cyan"
+        git push origin $Tag
+    }
+}
+
 
 Write-Host ""
 Write-Status "╔════════════════════════════════════════╗" "Magenta"

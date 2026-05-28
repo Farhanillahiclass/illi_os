@@ -23,9 +23,11 @@ pip-delete-this-directory.txt
 *.swo
 *~
 .DS_Store
+# Eclipse
 .project
 .pydevproject
 .settings/
+# Sublime Text
 *.sublime-project
 *.sublime-workspace
 
@@ -53,8 +55,10 @@ MANIFEST
 .coverage.*
 htmlcov/
 .tox/
+# Hypothesis
 .hypothesis/
-
+# Mypy
+.mypy_cache/
 # Streamlit
 .streamlit/
 .streamlit/config.toml
@@ -79,10 +83,12 @@ screenshots/
 *.gif
 
 # Temporary files
-temp/
-tmp/
+temp/ # Generic temp folder
+tmp/ # Generic temp folder
 *.tmp
 *.temp
+*.bak # Backup files
+*.swp # Swap files
 
 # Windows specific
 Thumbs.db
@@ -90,9 +96,11 @@ desktop.ini
 $RECYCLE.BIN/
 .windows-terminal/
 
-# Browser profiles & cache
+# Browser profiles & cache (Playwright/Selenium)
 browser_profiles/
 .cache/
+# Playwright specific
+ms-playwright/
 
 # System temp
 .tmp
@@ -101,26 +109,19 @@ browser_profiles/
 # Shell scripts artifacts
 *.ps1.log
 
-# Application-specific
+# Application-specific generated files
 .illi_browser_profiles/
 remote_credentials.json
 trusted_contacts.json.bak
-
 # Streamlit secrets (if used)
 .streamlit/secrets.toml
 secrets/
-
 # Don't commit sensitive files
 *.key
 *.pem
 *.crt
 config_local.json
-
 # Pipeline artifacts
 reports/
 data/
 artifacts/
-
-# Playwright browser binaries (optional)
-# Uncomment if you want to ignore them:
-# .cache/ms-playwright/

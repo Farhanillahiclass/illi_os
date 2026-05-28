@@ -39,3 +39,7 @@ sqlalchemy>=2.0.0
 # Utilities
 python-dotenv>=1.0.0
 requests>=2.31.0
+
+# Local LLM Support
+ollama>=0.1.0
+llama-cpp-python>=0.2.0

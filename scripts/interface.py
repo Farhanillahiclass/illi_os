@@ -1,6 +1,6 @@
 """
 Ghost-Protocol HUD Matrix Interface
-Advanced cyberpunk UI with dense HTML5/CSS injections for ILLI OS v1.2.5
+Advanced cyberpunk UI with dense HTML5/CSS injections for ILLI OS
 """
 
 import streamlit as st
@@ -438,6 +438,7 @@ def render_task_tracker(tasks: list) -> str:
     return html
 
 def render_whiteboard_hub() -> str:
+    # Placeholder for dynamic plotting with matplotlib/networkx
     """Render a mock technical whiteboard flowchart"""
     html = """
     <div style="height: 180px; width: 100%; border: 1px dashed rgba(0, 255, 255, 0.3); position: relative; background: rgba(0,20,40,0.2);">
