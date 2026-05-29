@@ -213,9 +213,23 @@ class MultiVoiceSynthesisEngine:
         self.engine = None
         self.available_voices = []
         self.current_voice = "male"
+        self.current_voice_id: Optional[str] = None
+        self.current_rate = 150
+        self.current_volume = 1.0
         self.memory_system = LocalMemorySystem()
         
         self._initialize_tts_engine()
+    
+    def _infer_voice_gender(self, voice) -> str:
+        text = "".join([
+            str(getattr(voice, attr, "") or "").lower()
+            for attr in ["gender", "name", "id"]
+        ])
+        if "female" in text or "zira" in text or "anna" in text or "susan" in text:
+            return "female"
+        if "male" in text or "david" in text or "mark" in text or "paul" in text:
+            return "male"
+        return "default"
     
     def _initialize_tts_engine(self):
         """Initialize pyttsx3 text-to-speech engine"""
@@ -228,17 +242,37 @@ class MultiVoiceSynthesisEngine:
             self.available_voices = [
                 {
                     "id": voice.id,
-                    "name": voice.name,
-                    "gender": "male" if "male" in voice.name.lower() else "female",
+                    "name": getattr(voice, "name", str(voice.id)),
+                    "gender": self._infer_voice_gender(voice),
                 }
                 for voice in voices
             ]
+            
+            preferred_gender = self.memory_system.get_preference("active_voice_gender", "male")
+            self.select_voice(preferred_gender)
             
             logger.info(f"TTS Engine initialized with {len(self.available_voices)} voices")
             logger.debug(f"Available voices: {[v['name'] for v in self.available_voices]}")
         except ImportError:
             logger.warning("pyttsx3 not available; text-to-speech disabled")
             self.engine = None
+        except Exception as e:
+            logger.error(f"Failed to initialize TTS engine: {e}")
+            self.engine = None
+    
+    def _create_engine(self):
+        """Create a fresh pyttsx3 engine instance for each speech call."""
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+            if self.current_voice_id:
+                engine.setProperty('voice', self.current_voice_id)
+            engine.setProperty('rate', self.current_rate)
+            engine.setProperty('volume', self.current_volume)
+            return engine
+        except Exception as e:
+            logger.error(f"Failed to create TTS engine instance: {e}")
+            return None
     
     def list_available_voices(self) -> List[Dict]:
         """List all available voice profiles"""
@@ -246,57 +280,70 @@ class MultiVoiceSynthesisEngine:
     
     def select_voice(self, voice_type: str = "male"):
         """Select voice type (male/female)"""
-        if not self.engine:
-            logger.error("TTS engine not available")
-            return False
-        
-        # Find matching voice
         target_voice = next(
             (v for v in self.available_voices if v["gender"] == voice_type.lower()),
             None
         )
         
-        if target_voice:
-            self.engine.setProperty('voice', target_voice["id"])
-            self.current_voice = voice_type
-            self.memory_system.set_preference("active_voice", voice_type)
-            logger.info(f"Voice switched to: {target_voice['name']}")
-            return True
+        if not target_voice and self.available_voices:
+            target_voice = self.available_voices[0]
+            logger.warning(
+                f"Requested voice '{voice_type}' not found, falling back to '{target_voice['name']}'"
+            )
+            self.current_voice = target_voice["gender"] or "default"
+        elif target_voice:
+            self.current_voice = voice_type.lower()
         else:
-            logger.error(f"Voice type '{voice_type}' not found")
+            logger.error("No voices available to select")
             return False
+        
+        self.current_voice_id = target_voice["id"]
+        self.memory_system.set_preference("active_voice_gender", self.current_voice)
+        self.memory_system.set_preference("active_voice", self.current_voice)
+        logger.info(f"Voice switched to: {target_voice['name']} ({self.current_voice})")
+        if self.engine:
+            try:
+                self.engine.setProperty('voice', self.current_voice_id)
+            except Exception:
+                pass
+        return True
     
     def set_voice_parameters(self, rate: int = 150, volume: float = 1.0):
         """Configure voice pitch, rate, and volume"""
-        if not self.engine:
-            return False
-        
-        try:
-            self.engine.setProperty('rate', rate)
-            self.engine.setProperty('volume', volume)
-            logger.info(f"Voice parameters: rate={rate}, volume={volume}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to set voice parameters: {str(e)}")
-            return False
+        self.current_rate = rate
+        self.current_volume = volume
+        if self.engine:
+            try:
+                self.engine.setProperty('rate', rate)
+                self.engine.setProperty('volume', volume)
+            except Exception as e:
+                logger.error(f"Failed to set voice parameters: {str(e)}")
+                return False
+        logger.info(f"Voice parameters: rate={rate}, volume={volume}")
+        return True
     
     def synthesize_speech(self, text: str, save_to_file: Optional[Path] = None) -> bool:
         """Convert text to speech"""
-        if not self.engine:
+        engine = self._create_engine()
+        if not engine:
             logger.error("TTS engine not available")
             return False
         
         try:
             if save_to_file:
-                self.engine.save_to_file(text, str(save_to_file))
+                engine.save_to_file(text, str(save_to_file))
             else:
-                self.engine.say(text)
-            
-            self.engine.runAndWait()
+                engine.say(text)
+            engine.runAndWait()
+            engine.stop()
             logger.info(f"Speech synthesized: {text[:50]}...")
             return True
         except Exception as e:
             logger.error(f"Speech synthesis failed: {str(e)}")
+            try:
+                engine.stop()
+            except Exception:
+                pass
             return False
     
     def speak_adaptive(self, text: str):

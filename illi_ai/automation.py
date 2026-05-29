@@ -406,7 +406,9 @@ class DeepOSOverlordPowerManager:
     def toggle_audio_mute(mute: bool = True) -> bool:
         """Toggle system audio mute state"""
         try:
-            from pycaw.pycoreutils import AudioUtilities
+            from comtypes import CLSCTX_ALL
+            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+
             devices = AudioUtilities.GetSpeakers()
             interface = devices.Activate(
                 IAudioEndpointVolume._iid_, CLSCTX_ALL, None)

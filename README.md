@@ -17,7 +17,7 @@ ILLI is designed to be your personal AI Engineer, Dev Assistant, and Realtime Co
 
 ```powershell
 # Clone or navigate to project
-cd path\to\illi_os
+cd path\to\f_illi
 
 # Create virtual environment
 python -m venv .venv
@@ -26,28 +26,29 @@ python -m venv .venv
 # Install dependencies
 pip install -r requirements.txt
 
-# Install browser automation (first time only)
-playwright install
-
-# Install package with CLI entry point
+# Install package with CLI entry point (optional)
 pip install -e .
 ```
 
 ### Launch HUD
 
-**Method 1: Direct Streamlit**
+**Method 1: Direct Streamlit (Recommended - Full Features)**
 ```powershell
-streamlit run app.py
+.\.venv\Scripts\python.exe -m streamlit run app_full.py
 ```
 
-**Method 2: CLI Entry Point** (recommended)
+**Method 2: Direct Streamlit (Enhanced HUD)**
 ```powershell
-illi --launch
+.\.venv\Scripts\python.exe -m streamlit run app_enhanced.py
 ```
 
-**Method 3: Automated Git + Launch** (with script)
+**Method 3: Simple Launch (Wrapper)**
 ```powershell
-.\scripts\git_auto_push.ps1 -Message "Launch ILLI OS" -Branch main
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+**Method 4: CLI Entry Point** (requires `pip install -e .`)
+```powershell
 illi-ai --launch
 ```
 
@@ -336,15 +337,21 @@ pip install -e .
 illi-ai --launch
 ```
 
+### Minimal setup (recommended for Windows)
+```powershell
+pwsh .\scripts\setup_minimal.ps1
+```
+
 ### Multiple Machines
 1. Create GitHub repository (see GITHUB_SETUP.md)
 2. Clone on any Windows machine:
    ```bash
    git clone https://github.com/yourname/illi_os.git
-   cd illi_os
+   cd YOUR_PROJECT_FOLDER
    pip install -r requirements.txt
    illi-ai --launch
    ```
+   If your clone folder is named differently, replace `YOUR_PROJECT_FOLDER` with your local folder name.
 
 ### Docker (Optional)
 ```dockerfile
