@@ -38,6 +38,7 @@ import subprocess
 import ctypes
 import requests
 import xml.etree.ElementTree as ET
+from collections import Counter
 from urllib.parse import quote_plus
 
 # ============================================================================
@@ -363,6 +364,25 @@ def fetch_live_news(source: str = "Google News", topic: str = "All") -> list:
         return []
 
 
+def get_trending_hashtags(news_feed: list, limit: int = 8) -> list:
+    stop_words = {
+        "the", "and", "for", "with", "from", "that", "this", "about",
+        "after", "before", "their", "there", "which", "have", "will",
+        "were", "what", "when", "where", "while", "your", "news"
+    }
+    counts = Counter()
+    for item in news_feed:
+        title = item.get("title", "")
+        words = re.findall(r"[A-Za-z0-9]+", title)
+        for word in words:
+            lower = word.lower()
+            if len(lower) < 4 or lower in stop_words:
+                continue
+            counts[lower] += 1
+    tags = [f"#{word}" for word, _ in counts.most_common(limit)]
+    return tags
+
+
 def open_website(url: str) -> str:
     target = normalize_url(url)
     add_url_history(target)
@@ -651,6 +671,16 @@ def render_main_hud():
         if not st.session_state.news_feed:
             st.info("No news loaded yet. Click Refresh News to load headlines.")
         else:
+            tags = get_trending_hashtags(st.session_state.news_feed)
+            if tags:
+                st.markdown("### 🔥 Trending Hashtags")
+                tag_cols = st.columns(len(tags))
+                for idx, tag in enumerate(tags):
+                    if tag_cols[idx].button(tag, key=f"tag_{idx}"):
+                        st.session_state.news_topic = tag.lstrip("#")
+                        st.session_state.news_feed = fetch_live_news(source, st.session_state.news_topic)
+                        st.rerun()
+
             ticker_items = [item.get("title", "Untitled") for item in st.session_state.news_feed[:5]]
             ticker_text = " • ".join(ticker_items)
             st.markdown(f"<div style='background:#050505; color:#00ffcc; padding:12px; border-radius:8px; margin-bottom:12px;'><marquee behavior=\"scroll\" direction=\"left\" scrollamount=6>{ticker_text}</marquee></div>", unsafe_allow_html=True)
