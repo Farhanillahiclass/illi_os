@@ -2,6 +2,8 @@
 
 **Local. Offline. Autonomous.**
 
+My name is Muhammad Farhan. I am a student of artificial intelligence and currently doing an internship at MRS (Muslim Review Skills).
+
 ILLI is designed to be your personal AI Engineer, Dev Assistant, and Realtime Copilot, providing a Jarvis-like experience entirely on your local machine.
 
 ---
@@ -54,7 +56,7 @@ illi-ai --launch
 
 Access the HUD at: **http://localhost:8501**
 
-- 📘 See the local repository wiki: [`WIKI.md`](WIKI.md)
+This project is licensed under the MIT License. See `LICENSE` for details.
 
 ---
 
