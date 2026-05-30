@@ -138,6 +138,8 @@ Access the HUD at: **http://localhost:8501**
 ✅ **Web Automation Tab** - URL history, quick open buttons, and browser action controls
 ✅ **YouTube Playback** - Play videos or search YouTube directly from the interface
 ✅ **Live News Page** - Real-time headlines from public RSS news feeds
+✅ **News Ticker Widget** - scrolling breaking headlines for quick glance updates
+✅ **Trending Topic Filters** - topic-aware news filtering on Google News
 ✅ **System Audio Control** - Mute/unmute audio from the HUD
 ✅ **Screen Lock & Task Manager** - Lock Windows screen and open Task Manager with one click
 ✅ **Dynamic Wallpaper Generation** - Hex-grid or red-grid patterns applied in real-time

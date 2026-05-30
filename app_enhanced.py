@@ -74,6 +74,7 @@ def init_session_state():
         st.session_state.url_history = []
         st.session_state.news_feed = []
         st.session_state.news_source = "Google News"
+        st.session_state.news_topic = "All"
         st.session_state.status_message = "Ready"
         st.session_state.neural_status = "IDLE"
         st.session_state.is_listening = False
@@ -330,20 +331,22 @@ def open_history_url(url: str) -> str:
     return target
 
 
-def fetch_live_news(source: str = "Google News") -> list:
+def fetch_live_news(source: str = "Google News", topic: str = "All") -> list:
     sources = {
         "Google News": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
         "BBC News": "http://feeds.bbci.co.uk/news/rss.xml",
         "Reuters": "https://www.reutersagency.com/feed/?best-topics=business"
     }
     feed_url = sources.get(source, sources["Google News"])
+    if source == "Google News" and topic != "All":
+        feed_url = f"https://news.google.com/rss/search?q={quote_plus(topic)}&hl=en-US&gl=US&ceid=US:en"
     try:
         response = requests.get(feed_url, timeout=8)
         response.raise_for_status()
         root = ET.fromstring(response.content)
         items = root.findall('.//item') or root.findall('.//{http://www.w3.org/2005/Atom}entry')
         news_items = []
-        for item in items[:12]:
+        for item in items[:18]:
             title = item.findtext('title') or item.findtext('{http://www.w3.org/2005/Atom}title', '')
             link = item.findtext('link') or item.findtext('{http://www.w3.org/2005/Atom}link', '')
             pub_date = item.findtext('pubDate') or item.findtext('{http://www.w3.org/2005/Atom}updated', '')
@@ -640,12 +643,17 @@ def render_main_hud():
         st.markdown("### 📰 Live News Feed")
         st.markdown("Fetch real-time headlines from public news feeds and browse stories directly.")
         source = st.selectbox("News Source:", ["Google News", "BBC News", "Reuters"], index=["Google News", "BBC News", "Reuters"].index(st.session_state.news_source) if st.session_state.news_source in ["Google News", "BBC News", "Reuters"] else 0)
+        topic = st.selectbox("Trending Topic:", ["All", "Technology", "Business", "Sports", "Entertainment", "Science"], index=["All", "Technology", "Business", "Sports", "Entertainment", "Science"].index(st.session_state.news_topic) if st.session_state.news_topic in ["All", "Technology", "Business", "Sports", "Entertainment", "Science"] else 0)
         st.session_state.news_source = source
+        st.session_state.news_topic = topic
         if st.button("🔄 Refresh News", use_container_width=True):
-            st.session_state.news_feed = fetch_live_news(source)
+            st.session_state.news_feed = fetch_live_news(source, topic)
         if not st.session_state.news_feed:
             st.info("No news loaded yet. Click Refresh News to load headlines.")
         else:
+            ticker_items = [item.get("title", "Untitled") for item in st.session_state.news_feed[:5]]
+            ticker_text = " • ".join(ticker_items)
+            st.markdown(f"<div style='background:#050505; color:#00ffcc; padding:12px; border-radius:8px; margin-bottom:12px;'><marquee behavior=\"scroll\" direction=\"left\" scrollamount=6>{ticker_text}</marquee></div>", unsafe_allow_html=True)
             for item in st.session_state.news_feed:
                 link = item.get("link", "")
                 title = item.get("title", "Untitled")
