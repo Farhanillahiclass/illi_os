@@ -25,9 +25,11 @@ from illi_ai.automation import (
 )
 from illi_ai.assistant import (
     get_installed_apps,
+    normalize_app_name,
     open_application,
     find_youtube_video,
     create_file,
+    create_directory,
     delete_path,
     open_file,
     dispatch_command
@@ -221,23 +223,29 @@ def parse_voice_command(command: str):
         if match:
             target_path = match.group(1).strip().strip('"')
             if "folder" in cmd_lower or "directory" in cmd_lower:
-                success = create_file(target_path)
-                add_shell_log(f"Created directory: {target_path}" if success else f"Failed to create directory: {target_path}", "SUCCESS" if success else "ERROR")
+                success = create_directory(target_path)
+                message = f"Created directory: {target_path}" if success else f"Failed to create directory: {target_path}"
             else:
                 success = create_file(target_path)
-                add_shell_log(f"Created file: {target_path}" if success else f"Failed to create file: {target_path}", "SUCCESS" if success else "ERROR")
+                message = f"Created file: {target_path}" if success else f"Failed to create file: {target_path}"
+            add_shell_log(message, "SUCCESS" if success else "ERROR")
+            st.session_state.command_response = message
     elif any(phrase in cmd_lower for phrase in ["delete file", "remove file", "delete folder", "remove folder", "delete directory", "remove directory"]):
         match = re.search(r"(?:delete|remove|rm)\s+(?:file|folder|directory)\s+(.+)", cmd_lower)
         if match:
             target_path = match.group(1).strip().strip('"')
             success = delete_path(target_path)
-            add_shell_log(f"Deleted: {target_path}" if success else f"Failed to delete: {target_path}", "SUCCESS" if success else "ERROR")
+            message = f"Deleted: {target_path}" if success else f"Failed to delete: {target_path}"
+            add_shell_log(message, "SUCCESS" if success else "ERROR")
+            st.session_state.command_response = message
     elif any(phrase in cmd_lower for phrase in ["open file", "view file", "show file", "open document", "open folder", "open directory"]):
         match = re.search(r"(?:open|view|show)\s+(?:file|document|folder|directory)\s+(.+)", cmd_lower)
         if match:
             target_path = match.group(1).strip().strip('"')
             success = open_file(target_path)
-            add_shell_log(f"Opened: {target_path}" if success else f"Failed to open: {target_path}", "SUCCESS" if success else "ERROR")
+            message = f"Opened: {target_path}" if success else f"Failed to open: {target_path}"
+            add_shell_log(message, "SUCCESS" if success else "ERROR")
+            st.session_state.command_response = message
     elif "launch" in cmd_lower or "start" in cmd_lower or ("open" in cmd_lower and not any(skip in cmd_lower for skip in ["open website", "open file", "open folder", "open directory", "open document", "open youtube", "youtube", "google", "search"])):
         app_name = cmd_lower
         for phrase in ["launch", "open", "start"]:
@@ -246,10 +254,10 @@ def parse_voice_command(command: str):
                 break
         if app_name:
             add_shell_log(f"Launching: {app_name}", "INFO")
-            if open_application(app_name):
-                add_shell_log(f"{app_name} launched successfully", "SUCCESS")
-            else:
-                add_shell_log(f"Unable to launch: {app_name}", "ERROR")
+            success = open_application(app_name)
+            message = f"{app_name} launched successfully" if success else f"Unable to launch: {app_name}"
+            add_shell_log(message, "SUCCESS" if success else "ERROR")
+            st.session_state.command_response = message
     elif "play video" in cmd_lower or "play youtube" in cmd_lower or "youtube" in cmd_lower:
         query = command.lower()
         for phrase in ["play video", "play youtube", "search youtube for", "youtube"]:
@@ -259,7 +267,8 @@ def parse_voice_command(command: str):
         if not query:
             query = "trending videos"
         add_shell_log(f"Playing video: {query}", "INFO")
-        play_video_on_youtube(query)
+        target = play_video_on_youtube(query)
+        st.session_state.command_response = f"Playing video: {target}" if target else "Unable to play video."
     elif "open website" in cmd_lower or "browse to" in cmd_lower or "go to" in cmd_lower or "visit" in cmd_lower:
         query = command.lower()
         for phrase in ["open website", "browse to", "go to", "visit"]:
@@ -269,7 +278,8 @@ def parse_voice_command(command: str):
         if not query:
             query = "https://www.google.com"
         add_shell_log(f"Opening website: {query}", "INFO")
-        open_website(query)
+        target = open_website(query)
+        st.session_state.command_response = f"Opened website: {target}"
     elif "search for" in cmd_lower or "google" in cmd_lower or "web search" in cmd_lower:
         query = command.lower()
         if "search for" in query:
@@ -281,7 +291,8 @@ def parse_voice_command(command: str):
         if not query:
             query = "latest news"
         add_shell_log(f"Searching web: {query}", "INFO")
-        open_website(query)
+        target = open_website(query)
+        st.session_state.command_response = f"Performed web search for: {query}" if target else "Unable to perform web search."
     elif "mute" in cmd_lower and "audio" in cmd_lower:
         add_shell_log("Muting audio", "INFO")
         toggle_system_audio(True)
@@ -296,12 +307,14 @@ def parse_voice_command(command: str):
         report = st.session_state.power_manager.run_system_scan_report()
         add_shell_log(report, "SUCCESS")
     else:
-        add_shell_log(f"Dispatching voice command: {command}", "INFO")
-        response = dispatch_command(command)
-        if response.get("success"):
-            add_shell_log(response.get("message", "Command completed."), "SUCCESS")
+        # Fallback to natural command dispatcher for generic commands
+        result = dispatch_command(command)
+        if result.get("success"):
+            add_shell_log(result.get("message", "Command completed."), "SUCCESS")
         else:
-            add_shell_log(response.get("message", "Command not recognized."), "ERROR")
+            add_shell_log(result.get("message", "Command not recognized."), "ERROR")
+        st.session_state.command_response = result.get("message", "")
+
 
 def speak_status():
     """Speak current status"""
@@ -471,6 +484,7 @@ def handle_text_command(command: str):
         add_shell_log(result.get("message", "Command completed."), "SUCCESS")
     else:
         add_shell_log(result.get("message", "Command failed."), "ERROR")
+    st.session_state.command_response = result.get("message", "")
     return result
 
 
@@ -632,6 +646,8 @@ def render_main_hud():
                 if st.button("📢 Speak Status", use_container_width=True):
                     speak_status()
                     st.rerun()
+            if st.session_state.command_response:
+                st.info(st.session_state.command_response)
         
         # ====== RIGHT COLUMN: THREATS & TASKS ======
         with right_col:
@@ -718,6 +734,9 @@ def render_main_hud():
             if command_query:
                 handle_text_command(command_query)
                 st.rerun()
+
+        if st.session_state.command_response:
+            st.info(st.session_state.command_response)
 
         if st.button("🔎 Scan Installed Apps", use_container_width=True):
             ensure_installed_apps()

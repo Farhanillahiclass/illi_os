@@ -3,11 +3,19 @@ ILLI OS v1.2.5 - Complete Launcher
 Ultra-robust HUD with all features, comprehensive error handling, and rich diagnostics.
 """
 
+import os
+import re
+import fnmatch
+import webbrowser
 import streamlit as st
 import sys
 import traceback
+import requests
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from datetime import datetime
+from collections import Counter
+from urllib.parse import quote_plus
 import json
 from illi_ai.assistant import (
     get_installed_apps,
@@ -15,6 +23,20 @@ from illi_ai.assistant import (
     dispatch_command,
     find_youtube_video,
 )
+
+
+def safe_rerun():
+    """Use the available Streamlit rerun API safely across versions."""
+    if hasattr(st, "rerun"):
+        st.rerun()
+    elif hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+    else:
+        try:
+            from streamlit.runtime.scriptrunner import RerunException
+            raise RerunException()
+        except Exception:
+            st.warning("⚠️ Streamlit rerun is unavailable in this environment.")
 
 # ============================================================================
 # PAGE CONFIGURATION
@@ -88,6 +110,10 @@ def init_session():
         st.session_state.installed_apps = {}
         st.session_state.installed_apps_loaded = False
         st.session_state.command_response = ""
+        st.session_state.news_feed = []
+        st.session_state.news_source = "Google News"
+        st.session_state.news_topic = "All"
+        st.session_state.url_history = []
         
         st.session_state.active_tab = "dashboard"
         st.session_state.tasks = []
@@ -229,7 +255,7 @@ def control_launcher():
     if st.button("Execute Assistant Command", use_container_width=True, key="btn_assistant_execute"):
         if command_input.strip():
             handle_text_command(command_input)
-            st.experimental_rerun()
+            safe_rerun()
 
     if st.session_state.command_response:
         st.info(st.session_state.command_response)
@@ -241,7 +267,7 @@ def control_launcher():
     with scan_col2:
         if st.button("Scan Apps", use_container_width=True, key="btn_scan_apps"):
             ensure_installed_apps(force_refresh=True)
-            st.experimental_rerun()
+            safe_rerun()
 
     if st.session_state.installed_apps_loaded:
         matches = []
@@ -426,6 +452,239 @@ def control_wallpaper():
             except Exception as e:
                 add_shell_log(f"Wallpaper error: {str(e)}", "ERROR")
 
+
+def normalize_url(url: str) -> str:
+    trimmed = str(url).strip()
+    if not trimmed:
+        return ""
+    if trimmed.startswith("http://") or trimmed.startswith("https://"):
+        return trimmed
+    if re.match(r"^[\w\-]+\.[\w\.-]+", trimmed):
+        return f"https://{trimmed}"
+    return f"https://www.google.com/search?q={quote_plus(trimmed)}"
+
+
+def add_url_history(url: str):
+    target = normalize_url(url)
+    if not target:
+        return
+    if "url_history" not in st.session_state:
+        st.session_state.url_history = []
+    if target in st.session_state.url_history:
+        st.session_state.url_history.remove(target)
+    st.session_state.url_history.insert(0, target)
+    st.session_state.url_history = st.session_state.url_history[:20]
+
+
+def get_url_history() -> list:
+    return st.session_state.get("url_history", [])
+
+
+def open_history_url(url: str) -> str:
+    target = normalize_url(url)
+    webbrowser.open_new_tab(target)
+    add_shell_log(f"Opened history URL: {target}", "SUCCESS")
+    add_url_history(target)
+    return target
+
+
+def fetch_live_news(source: str = "Google News", topic: str = "All") -> list:
+    sources = {
+        "Google News": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
+        "BBC News": "http://feeds.bbci.co.uk/news/rss.xml",
+        "Reuters": "https://www.reutersagency.com/feed/?best-topics=business"
+    }
+    feed_url = sources.get(source, sources["Google News"])
+    if source == "Google News" and topic != "All":
+        feed_url = f"https://news.google.com/rss/search?q={quote_plus(topic)}&hl=en-US&gl=US&ceid=US:en"
+    try:
+        response = requests.get(feed_url, timeout=8)
+        response.raise_for_status()
+        root = ET.fromstring(response.content)
+        items = root.findall('.//item') or root.findall('.//{http://www.w3.org/2005/Atom}entry')
+        news_items = []
+        for item in items[:18]:
+            title = item.findtext('title') or item.findtext('{http://www.w3.org/2005/Atom}title', '')
+            link = item.findtext('link') or item.findtext('{http://www.w3.org/2005/Atom}link', '')
+            pub_date = item.findtext('pubDate') or item.findtext('{http://www.w3.org/2005/Atom}updated', '')
+            if link is None and item.find('{http://www.w3.org/2005/Atom}link') is not None:
+                link = item.find('{http://www.w3.org/2005/Atom}link').attrib.get('href', '')
+            news_items.append({
+                "title": title.strip() if title else "Untitled",
+                "link": link.strip() if link else "",
+                "pubDate": pub_date.strip() if pub_date else ""
+            })
+        return news_items
+    except Exception as e:
+        add_shell_log(f"News fetch failed: {str(e)}", "ERROR")
+        return []
+
+
+def get_trending_hashtags(news_feed: list, limit: int = 8) -> list:
+    stop_words = {
+        "the", "and", "for", "with", "from", "that", "this", "about",
+        "after", "before", "their", "there", "which", "have", "will",
+        "were", "what", "when", "where", "while", "your", "news"
+    }
+    counts = Counter()
+    for item in news_feed:
+        title = item.get("title", "")
+        words = re.findall(r"[A-Za-z0-9]+", title)
+        for word in words:
+            lower = word.lower()
+            if len(lower) < 4 or lower in stop_words:
+                continue
+            counts[lower] += 1
+    return [f"#{word}" for word, _ in counts.most_common(limit)]
+
+
+def open_website(url: str) -> str:
+    target = normalize_url(url)
+    add_url_history(target)
+    webbrowser.open_new_tab(target)
+    add_shell_log(f"Opened website: {target}", "SUCCESS")
+    return target
+
+
+def play_video_on_youtube(query: str) -> str:
+    trimmed = str(query).strip()
+    if not trimmed:
+        trimmed = "trending videos"
+    if "youtube.com/watch" in trimmed or "youtu.be" in trimmed:
+        target = trimmed if trimmed.startswith("http") else f"https://{trimmed}"
+    else:
+        target = find_youtube_video(trimmed) or f"https://www.youtube.com/results?search_query={quote_plus(trimmed)}"
+    add_url_history(target)
+    webbrowser.open_new_tab(target)
+    add_shell_log(f"Playing YouTube: {target}", "SUCCESS")
+    return target
+
+
+def search_files(query: str) -> list:
+    results = []
+    pattern = query.strip()
+    if "*" not in pattern and "?" not in pattern:
+        pattern = f"*{pattern}*"
+    search_paths = [Path.cwd(), Path.home()]
+    for root_path in search_paths:
+        if not root_path.exists():
+            continue
+        try:
+            for root, dirs, files in os.walk(root_path):
+                relative_depth = len(Path(root).relative_to(root_path).parts)
+                if relative_depth > 4:
+                    continue
+                for file in files:
+                    if fnmatch.fnmatch(file.lower(), pattern.lower()):
+                        results.append(os.path.join(root, file))
+                        if len(results) >= 20:
+                            return results
+        except Exception:
+            continue
+    return results[:20]
+
+
+def control_web_automation():
+    st.subheader("🌐 Web Automation")
+    st.markdown("Use URL history and quick web actions to control browsing from ILLI.")
+    url_input = st.text_input("URL or search query:", placeholder="e.g., youtube.com, openai.com, search cats", key="full_url_input")
+    video_query = st.text_input("YouTube search or direct URL:", placeholder="e.g., relax music video", key="full_video_query")
+    action_col1, action_col2, action_col3 = st.columns(3)
+    with action_col1:
+        if st.button("🌐 Open Website", use_container_width=True, key="btn_full_open_website"):
+            if url_input:
+                open_website(url_input)
+    with action_col2:
+        if st.button("▶️ Play Video", use_container_width=True, key="btn_full_play_video"):
+            if video_query:
+                play_video_on_youtube(video_query)
+    with action_col3:
+        if st.button("🔎 Search Web", use_container_width=True, key="btn_full_search_web"):
+            if url_input:
+                open_website(url_input)
+
+    st.divider()
+    st.markdown("### 🧠 Assistant Command")
+    command_query = st.text_input(
+        "Assistant command:",
+        placeholder="e.g., open chrome, play video lofi beats, create file notes.txt, delete folder temp",
+        key="full_assistant_command"
+    )
+    if st.button("🧠 Execute Command", use_container_width=True, key="btn_full_execute_command"):
+        if command_query:
+            response = dispatch_command(command_query)
+            if response.get("success"):
+                add_shell_log(response.get("message", "Command completed."), "SUCCESS")
+            else:
+                add_shell_log(response.get("message", "Command failed."), "ERROR")
+            st.session_state.command_response = response.get("message", "")
+            safe_rerun()
+
+    if st.session_state.command_response:
+        st.info(st.session_state.command_response)
+
+    if st.button("🔎 Scan Installed Apps", use_container_width=True, key="btn_full_scan_apps"):
+        ensure_installed_apps(force_refresh=True)
+        safe_rerun()
+
+    if st.session_state.installed_apps_loaded:
+        st.info(f"Installed apps discovered: {len(st.session_state.installed_apps)}")
+        with st.expander("Show detected apps", expanded=False):
+            for idx, (name, path) in enumerate(list(st.session_state.installed_apps.items())[:12]):
+                st.markdown(f"- **{name}**: `{path}`")
+
+    st.divider()
+    st.markdown("### 🔁 URL History")
+    history = get_url_history()
+    if history:
+        for idx, item in enumerate(history):
+            row_col1, row_col2 = st.columns([5, 1])
+            row_col1.markdown(f"{idx + 1}. [{item}]({item})")
+            if row_col2.button("Open", key=f"full_history_open_{idx}"):
+                open_history_url(item)
+                safe_rerun()
+    else:
+        st.info("URL history is empty. Open a website to begin tracking.")
+
+    if st.button("🗑️ Clear URL History", use_container_width=True, key="btn_full_clear_history"):
+        st.session_state.url_history = []
+        safe_rerun()
+
+
+def control_live_news():
+    st.subheader("📰 Live News Feed")
+    st.markdown("Fetch real-time headlines from public news feeds and browse stories directly.")
+    source = st.selectbox("News Source:", ["Google News", "BBC News", "Reuters"], index=["Google News", "BBC News", "Reuters"].index(st.session_state.news_source) if st.session_state.news_source in ["Google News", "BBC News", "Reuters"] else 0, key="full_news_source")
+    topic = st.selectbox("Trending Topic:", ["All", "Technology", "Business", "Sports", "Entertainment", "Science"], index=["All", "Technology", "Business", "Sports", "Entertainment", "Science"].index(st.session_state.news_topic) if st.session_state.news_topic in ["All", "Technology", "Business", "Sports", "Entertainment", "Science"] else 0, key="full_news_topic")
+    st.session_state.news_source = source
+    st.session_state.news_topic = topic
+    if st.button("🔄 Refresh News", use_container_width=True, key="btn_full_refresh_news"):
+        st.session_state.news_feed = fetch_live_news(source, topic)
+    if not st.session_state.news_feed:
+        st.info("No news loaded yet. Click Refresh News to load headlines.")
+    else:
+        tags = get_trending_hashtags(st.session_state.news_feed)
+        if tags:
+            st.markdown("### 🔥 Trending Hashtags")
+            tag_cols = st.columns(len(tags))
+            for idx, tag in enumerate(tags):
+                if tag_cols[idx].button(tag, key=f"full_tag_{idx}"):
+                    st.session_state.news_topic = tag.lstrip("#")
+                    st.session_state.news_feed = fetch_live_news(source, st.session_state.news_topic)
+                    safe_rerun()
+
+        ticker_items = [item.get("title", "Untitled") for item in st.session_state.news_feed[:5]]
+        ticker_text = " • ".join(ticker_items)
+        st.markdown(f"<div style='background:#050505; color:#00ffcc; padding:12px; border-radius:8px; margin-bottom:12px;'><marquee behavior=\"scroll\" direction=\"left\" scrollamount=6>{ticker_text}</marquee></div>", unsafe_allow_html=True)
+        for item in st.session_state.news_feed:
+            link = item.get("link", "")
+            title = item.get("title", "Untitled")
+            pub_date = item.get("pubDate", "")
+            if link:
+                st.markdown(f"- [{title}]({link})  \n*{pub_date}*")
+            else:
+                st.markdown(f"- {title}  \n*{pub_date}*")
+
 # ============================================================================
 # MAIN APP
 # ============================================================================
@@ -467,14 +726,16 @@ def main():
     st.divider()
     
     # Tab navigation
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
         "🎯 Dashboard",
         "⚡ Power",
         "🎤 Voice",
         "🚀 Launcher",
         "🔍 Files",
         "📊 Diagnostics",
-        "👤 Preferences"
+        "👤 Preferences",
+        "🌐 Web Automation",
+        "📰 Live News"
     ])
     
     with tab1:
@@ -516,6 +777,12 @@ def main():
         control_preferences()
         st.divider()
         control_wallpaper()
+
+    with tab8:
+        control_web_automation()
+
+    with tab9:
+        control_live_news()
     
     st.divider()
     

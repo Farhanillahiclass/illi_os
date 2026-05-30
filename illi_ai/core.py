@@ -12,6 +12,8 @@ from typing import Optional, Dict, Any, List
 import threading
 
 logger = logging.getLogger(__name__)
+logging.getLogger("comtypes").setLevel(logging.WARNING)
+logging.getLogger("comtypes.client").setLevel(logging.WARNING)
 
 
 class LocalMemorySystem:
@@ -324,7 +326,7 @@ class MultiVoiceSynthesisEngine:
     
     def synthesize_speech(self, text: str, save_to_file: Optional[Path] = None) -> bool:
         """Convert text to speech"""
-        engine = self._create_engine()
+        engine = self.engine or self._create_engine()
         if not engine:
             logger.error("TTS engine not available")
             return False
@@ -335,7 +337,6 @@ class MultiVoiceSynthesisEngine:
             else:
                 engine.say(text)
             engine.runAndWait()
-            engine.stop()
             logger.info(f"Speech synthesized: {text[:50]}...")
             return True
         except Exception as e:

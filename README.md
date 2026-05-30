@@ -44,10 +44,11 @@ pip install -e .
 .\.venv\Scripts\python.exe -m streamlit run app_enhanced.py
 ```
 
-**Method 3: Simple Launch (Wrapper)**
+**Method 3: Unified Launcher (Recommended)**
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
+This entrypoint attempts to launch `app_full.py` first and falls back to `app_enhanced.py` if the full HUD cannot load.
 
 **Method 4: CLI Entry Point** (requires `pip install -e .`)
 ```powershell

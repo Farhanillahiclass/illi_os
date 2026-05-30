@@ -167,6 +167,17 @@ def open_file(file_path: str) -> bool:
         return False
 
 
+def create_directory(directory_path: str) -> bool:
+    if not directory_path:
+        return False
+    target = Path(directory_path).expanduser()
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        return True
+    except Exception:
+        return False
+
+
 def create_file(file_path: str, content: Optional[str] = None) -> bool:
     if not file_path:
         return False
@@ -221,7 +232,7 @@ def dispatch_command(command: str) -> Dict[str, Any]:
     if create_match:
         path = create_match.group(1).strip().strip('"')
         if "folder" in normalized or "directory" in normalized:
-            success = create_file(path)
+            success = create_directory(path)
             return {"success": success, "message": f"Created directory: {path}" if success else f"Failed to create directory: {path}"}
         success = create_file(path)
         return {"success": success, "message": f"Created file: {path}" if success else f"Failed to create file: {path}"}
