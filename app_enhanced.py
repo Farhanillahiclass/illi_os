@@ -32,6 +32,11 @@ from illi_ai.core import (
 from pathlib import Path
 import threading
 import time
+import re
+import webbrowser
+import subprocess
+import ctypes
+from urllib.parse import quote_plus
 
 # ============================================================================
 # Page Configuration
@@ -195,6 +200,47 @@ def parse_voice_command(command: str):
         app_name = cmd_lower.split("launch", 1)[-1].strip()
         add_shell_log(f"Launching: {app_name}", "INFO")
         st.session_state.power_manager.launch_application(app_name)
+    elif "play video" in cmd_lower or "play youtube" in cmd_lower:
+        query = command.lower()
+        if "play video" in query:
+            query = query.split("play video", 1)[-1].strip()
+        elif "play youtube" in query:
+            query = query.split("play youtube", 1)[-1].strip()
+        if not query:
+            query = "trending videos"
+        add_shell_log(f"Playing video: {query}", "INFO")
+        play_video_on_youtube(query)
+    elif "open website" in cmd_lower or "browse to" in cmd_lower or "go to" in cmd_lower:
+        query = command.lower()
+        for phrase in ["open website", "browse to", "go to", "visit"]:
+            if phrase in query:
+                query = query.split(phrase, 1)[-1].strip()
+                break
+        if not query:
+            query = "https://www.google.com"
+        add_shell_log(f"Opening website: {query}", "INFO")
+        open_website(query)
+    elif "search for" in cmd_lower or "google" in cmd_lower or "web search" in cmd_lower:
+        query = command.lower()
+        if "search for" in query:
+            query = query.split("search for", 1)[-1].strip()
+        elif "google" in query:
+            query = query.split("google", 1)[-1].strip()
+        elif "web search" in query:
+            query = query.split("web search", 1)[-1].strip()
+        if not query:
+            query = "latest news"
+        add_shell_log(f"Searching web: {query}", "INFO")
+        open_website(query)
+    elif "mute" in cmd_lower and "audio" in cmd_lower:
+        add_shell_log("Muting audio", "INFO")
+        toggle_system_audio(True)
+    elif "unmute" in cmd_lower and "audio" in cmd_lower:
+        add_shell_log("Unmuting audio", "INFO")
+        toggle_system_audio(False)
+    elif "lock screen" in cmd_lower or "lock pc" in cmd_lower or "lock computer" in cmd_lower:
+        add_shell_log("Locking screen", "INFO")
+        lock_system()
     elif "scan" in cmd_lower or "report" in cmd_lower:
         add_shell_log("Running system scan...", "INFO")
         report = st.session_state.power_manager.run_system_scan_report()
@@ -244,6 +290,70 @@ def search_files(query: str):
         add_shell_log(f"Search error: {str(e)}", "ERROR")
         return []
 
+def normalize_url(url: str) -> str:
+    trimmed = url.strip()
+    if not trimmed:
+        return ""
+    if trimmed.startswith("http://") or trimmed.startswith("https://"):
+        return trimmed
+    if re.match(r"^[\w\-]+\.[\w\.-]+", trimmed):
+        return f"https://{trimmed}"
+    return f"https://www.google.com/search?q={quote_plus(trimmed)}"
+
+
+def open_website(url: str) -> str:
+    target = normalize_url(url)
+    webbrowser.open_new_tab(target)
+    add_shell_log(f"Opened website: {target}", "SUCCESS")
+    return target
+
+
+def play_video_on_youtube(query: str) -> str:
+    trimmed = query.strip()
+    if not trimmed:
+        trimmed = "trending videos"
+    if "youtube.com/watch" in trimmed or "youtu.be" in trimmed:
+        target = trimmed if trimmed.startswith("http") else f"https://{trimmed}"
+    else:
+        target = f"https://www.youtube.com/results?search_query={quote_plus(trimmed)}"
+    webbrowser.open_new_tab(target)
+    add_shell_log(f"Playing YouTube: {target}", "SUCCESS")
+    return target
+
+
+def lock_system() -> bool:
+    try:
+        ctypes.windll.user32.LockWorkStation()
+        add_shell_log("Screen lock invoked", "INFO")
+        return True
+    except Exception as e:
+        add_shell_log(f"Lock screen failed: {str(e)}", "ERROR")
+        return False
+
+
+def toggle_system_audio(mute: bool = True) -> bool:
+    try:
+        success = st.session_state.power_manager.toggle_audio_mute(mute=mute)
+        if success:
+            add_shell_log(f"Audio {'muted' if mute else 'unmuted'}", "SUCCESS")
+        else:
+            add_shell_log("Audio control unavailable", "WARNING")
+        return success
+    except Exception as e:
+        add_shell_log(f"Audio toggle failed: {str(e)}", "ERROR")
+        return False
+
+
+def open_task_manager() -> bool:
+    try:
+        subprocess.Popen(["taskmgr"])
+        add_shell_log("Task Manager opened", "SUCCESS")
+        return True
+    except Exception as e:
+        add_shell_log(f"Task Manager failed: {str(e)}", "ERROR")
+        return False
+
+
 def launch_app(app_name: str):
     """Launch application"""
     try:
@@ -252,6 +362,7 @@ def launch_app(app_name: str):
         add_shell_log(f"{app_name} launched successfully", "SUCCESS")
     except Exception as e:
         add_shell_log(f"Launch error: {str(e)}", "ERROR")
+
 
 def on_hotkey_trigger():
     """Hotkey callback - toggle HUD visibility"""
@@ -425,6 +536,50 @@ def render_main_hud():
                 add_shell_log(f"Found {len(results)} files matching '{search_query}'", "SUCCESS")
                 st.rerun()
     
+    st.divider()
+
+    # ====== WEB BROWSING + MEDIA ======
+    st.markdown("### 🌍 WEB CONTROL & MEDIA")
+    browse_col1, browse_col2, browse_col3 = st.columns([1, 1, 1])
+
+    with browse_col1:
+        url_input = st.text_input("URL or search query:", placeholder="e.g., youtube.com, openai.com, search cats")
+        if st.button("🌐 Open Website", use_container_width=True):
+            if url_input:
+                open_website(url_input)
+                st.rerun()
+
+    with browse_col2:
+        video_query = st.text_input("YouTube search or URL:", placeholder="e.g., relax music video")
+        if st.button("▶️ Play Video", use_container_width=True):
+            if video_query:
+                play_video_on_youtube(video_query)
+                st.rerun()
+
+    with browse_col3:
+        if st.button("🔎 Search Web", use_container_width=True):
+            if url_input:
+                open_website(url_input)
+                st.rerun()
+
+    control_col1, control_col2, control_col3, control_col4 = st.columns(4)
+    with control_col1:
+        if st.button("🔇 Mute Audio", use_container_width=True):
+            toggle_system_audio(True)
+            st.rerun()
+    with control_col2:
+        if st.button("🔊 Unmute Audio", use_container_width=True):
+            toggle_system_audio(False)
+            st.rerun()
+    with control_col3:
+        if st.button("🔒 Lock Screen", use_container_width=True):
+            lock_system()
+            st.rerun()
+    with control_col4:
+        if st.button("🧠 Task Manager", use_container_width=True):
+            open_task_manager()
+            st.rerun()
+
     st.divider()
     
     # ====== SHELL LOG ======
