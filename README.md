@@ -135,7 +135,9 @@ Access the HUD at: **http://localhost:8501**
 ✅ **Ctrl+Alt+I Global Hotkey** - Toggle HUD visibility anytime
 ✅ **Voice Command Parsing** - "shutdown", "restart", "sleep", "clear recycle", "launch [app]"
 ✅ **Web Browsing Control** - Open websites, search the web, and launch URLs from the HUD
+✅ **Web Automation Tab** - URL history, quick open buttons, and browser action controls
 ✅ **YouTube Playback** - Play videos or search YouTube directly from the interface
+✅ **Live News Page** - Real-time headlines from public RSS news feeds
 ✅ **System Audio Control** - Mute/unmute audio from the HUD
 ✅ **Screen Lock & Task Manager** - Lock Windows screen and open Task Manager with one click
 ✅ **Dynamic Wallpaper Generation** - Hex-grid or red-grid patterns applied in real-time

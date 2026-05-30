@@ -36,6 +36,8 @@ import re
 import webbrowser
 import subprocess
 import ctypes
+import requests
+import xml.etree.ElementTree as ET
 from urllib.parse import quote_plus
 
 # ============================================================================
@@ -69,6 +71,9 @@ def init_session_state():
         st.session_state.active_tab = "Dashboard"
         st.session_state.tasks = []
         st.session_state.shell_logs = []
+        st.session_state.url_history = []
+        st.session_state.news_feed = []
+        st.session_state.news_source = "Google News"
         st.session_state.status_message = "Ready"
         st.session_state.neural_status = "IDLE"
         st.session_state.is_listening = False
@@ -301,8 +306,63 @@ def normalize_url(url: str) -> str:
     return f"https://www.google.com/search?q={quote_plus(trimmed)}"
 
 
+def add_url_history(url: str):
+    target = normalize_url(url)
+    if not target:
+        return
+    if "url_history" not in st.session_state:
+        st.session_state.url_history = []
+    if target in st.session_state.url_history:
+        st.session_state.url_history.remove(target)
+    st.session_state.url_history.insert(0, target)
+    st.session_state.url_history = st.session_state.url_history[:20]
+
+
+def get_url_history() -> list:
+    return st.session_state.get("url_history", [])
+
+
+def open_history_url(url: str) -> str:
+    target = normalize_url(url)
+    webbrowser.open_new_tab(target)
+    add_shell_log(f"Opened history URL: {target}", "SUCCESS")
+    add_url_history(target)
+    return target
+
+
+def fetch_live_news(source: str = "Google News") -> list:
+    sources = {
+        "Google News": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
+        "BBC News": "http://feeds.bbci.co.uk/news/rss.xml",
+        "Reuters": "https://www.reutersagency.com/feed/?best-topics=business"
+    }
+    feed_url = sources.get(source, sources["Google News"])
+    try:
+        response = requests.get(feed_url, timeout=8)
+        response.raise_for_status()
+        root = ET.fromstring(response.content)
+        items = root.findall('.//item') or root.findall('.//{http://www.w3.org/2005/Atom}entry')
+        news_items = []
+        for item in items[:12]:
+            title = item.findtext('title') or item.findtext('{http://www.w3.org/2005/Atom}title', '')
+            link = item.findtext('link') or item.findtext('{http://www.w3.org/2005/Atom}link', '')
+            pub_date = item.findtext('pubDate') or item.findtext('{http://www.w3.org/2005/Atom}updated', '')
+            if link is None and item.find('{http://www.w3.org/2005/Atom}link') is not None:
+                link = item.find('{http://www.w3.org/2005/Atom}link').attrib.get('href', '')
+            news_items.append({
+                "title": title.strip() if title else "Untitled",
+                "link": link.strip() if link else "",
+                "pubDate": pub_date.strip() if pub_date else ""
+            })
+        return news_items
+    except Exception as e:
+        add_shell_log(f"News fetch failed: {str(e)}", "ERROR")
+        return []
+
+
 def open_website(url: str) -> str:
     target = normalize_url(url)
+    add_url_history(target)
     webbrowser.open_new_tab(target)
     add_shell_log(f"Opened website: {target}", "SUCCESS")
     return target
@@ -316,6 +376,7 @@ def play_video_on_youtube(query: str) -> str:
         target = trimmed if trimmed.startswith("http") else f"https://{trimmed}"
     else:
         target = f"https://www.youtube.com/results?search_query={quote_plus(trimmed)}"
+    add_url_history(target)
     webbrowser.open_new_tab(target)
     add_shell_log(f"Playing YouTube: {target}", "SUCCESS")
     return target
@@ -423,162 +484,176 @@ def render_main_hud():
     
     st.divider()
     
-    # Main 3-column HUD layout
-    left_col, center_col, right_col = st.columns([1, 2, 1])
-    
-    # ====== LEFT COLUMN: METRICS ======
-    with left_col:
-        st.markdown("### 📊 METRICS")
+    page_tabs = st.tabs(["Dashboard", "Web Automation", "Live News"])
+
+    with page_tabs[0]:
+        left_col, center_col, right_col = st.columns([1, 2, 1])
         
-        # Render metric dials
-        st.markdown(
-            render_metric_dial("CPU", metrics['cpu'], 100, "%"),
-            unsafe_allow_html=True
-        )
-        st.markdown(
-            render_metric_dial("RAM", metrics['ram'], 100, "%"),
-            unsafe_allow_html=True
-        )
-    
-    # ====== CENTER COLUMN: NEURAL CORE & CONTROLS ======
-    with center_col:
-        st.markdown("### 🧠 NEURAL CORE")
+        # ====== LEFT COLUMN: METRICS ======
+        with left_col:
+            st.markdown("### 📊 METRICS")
+            st.markdown(
+                render_metric_dial("CPU", metrics['cpu'], 100, "%"),
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                render_metric_dial("RAM", metrics['ram'], 100, "%"),
+                unsafe_allow_html=True
+            )
         
-        # Render 3D neural core canvas
-        st.markdown(
-            render_neural_core_canvas(st.session_state.is_listening, st.session_state.neural_status),
-            unsafe_allow_html=True
-        )
+        # ====== CENTER COLUMN: NEURAL CORE & CONTROLS ======
+        with center_col:
+            st.markdown("### 🧠 NEURAL CORE")
+            st.markdown(
+                render_neural_core_canvas(st.session_state.is_listening, st.session_state.neural_status),
+                unsafe_allow_html=True
+            )
+            st.divider()
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("🎤 Calibrate Mic", use_container_width=True):
+                    calibrate_microphone()
+                    st.rerun()
+            with col2:
+                if st.button("🎙️ Listen", use_container_width=True):
+                    command = listen_voice_command()
+                    if command:
+                        parse_voice_command(command)
+                    st.rerun()
+            with col3:
+                if st.button("📢 Speak Status", use_container_width=True):
+                    speak_status()
+                    st.rerun()
         
+        # ====== RIGHT COLUMN: THREATS & TASKS ======
+        with right_col:
+            st.markdown("### 📋 ACTIVITY")
+            tabs = st.tabs(["Threats", "Tasks", "Log"])
+            with tabs[0]:
+                st.markdown(render_threat_map(), unsafe_allow_html=True)
+            with tabs[1]:
+                st.markdown(render_task_tracker(st.session_state.tasks), unsafe_allow_html=True)
+            with tabs[2]:
+                st.markdown(render_shell_stream(st.session_state.shell_logs, max_entries=10), unsafe_allow_html=True)
+
         st.divider()
         
-        # Control buttons
-        col1, col2, col3 = st.columns(3)
-        
+        st.markdown("### ⚡ POWER MANAGEMENT")
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            if st.button("🎤 Calibrate Mic", use_container_width=True):
-                calibrate_microphone()
-                st.rerun()
-        
+            if st.button("💤 Sleep", use_container_width=True):
+                add_shell_log("SLEEP command executed", "WARNING")
+                st.session_state.power_manager.sleep_system()
         with col2:
-            if st.button("🎙️ Listen", use_container_width=True):
-                command = listen_voice_command()
-                if command:
-                    parse_voice_command(command)
-                st.rerun()
-        
+            if st.button("🔄 Restart", use_container_width=True):
+                add_shell_log("RESTART command executed - 10 second delay", "WARNING")
+                st.session_state.power_manager.restart_system(delay_seconds=10)
         with col3:
-            if st.button("📢 Speak Status", use_container_width=True):
-                speak_status()
+            if st.button("⛔ Shutdown", use_container_width=True):
+                add_shell_log("SHUTDOWN command executed - 10 second delay", "WARNING")
+                st.session_state.power_manager.shutdown_system(delay_seconds=10)
+        with col4:
+            if st.button("🗑️ Clear Recycle", use_container_width=True):
+                add_shell_log("Clearing recycle bin...", "INFO")
+                st.session_state.power_manager.clear_recycle_bin()
+                add_shell_log("Recycle bin cleared", "SUCCESS")
                 st.rerun()
-    
-    # ====== RIGHT COLUMN: THREATS & TASKS ======
-    with right_col:
-        st.markdown("### 📋 ACTIVITY")
-        
-        tabs = st.tabs(["Threats", "Tasks", "Log"])
-        
-        with tabs[0]:
-            st.markdown(render_threat_map(), unsafe_allow_html=True)
-        
-        with tabs[1]:
-            st.markdown(render_task_tracker(st.session_state.tasks), unsafe_allow_html=True)
-        
-        with tabs[2]:
-            st.markdown(render_shell_stream(st.session_state.shell_logs, max_entries=10), unsafe_allow_html=True)
-    
-    st.divider()
-    
-    # ====== POWER CONTROLS ======
-    st.markdown("### ⚡ POWER MANAGEMENT")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("💤 Sleep", use_container_width=True):
-            add_shell_log("SLEEP command executed", "WARNING")
-            st.session_state.power_manager.sleep_system()
-    
-    with col2:
-        if st.button("🔄 Restart", use_container_width=True):
-            add_shell_log("RESTART command executed - 10 second delay", "WARNING")
-            st.session_state.power_manager.restart_system(delay_seconds=10)
-    
-    with col3:
-        if st.button("⛔ Shutdown", use_container_width=True):
-            add_shell_log("SHUTDOWN command executed - 10 second delay", "WARNING")
-            st.session_state.power_manager.shutdown_system(delay_seconds=10)
-    
-    with col4:
-        if st.button("🗑️ Clear Recycle", use_container_width=True):
-            add_shell_log("Clearing recycle bin...", "INFO")
-            st.session_state.power_manager.clear_recycle_bin()
-            add_shell_log("Recycle bin cleared", "SUCCESS")
-            st.rerun()
-    
-    st.divider()
-    
-    # ====== APP LAUNCH ======
-    st.markdown("### 🚀 LAUNCH APPLICATIONS")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        app_name = st.text_input("App to launch:", placeholder="e.g., notepad, calculator, chrome")
-        if st.button("🔗 Launch App", use_container_width=True):
-            if app_name:
-                launch_app(app_name)
-                st.rerun()
-    
-    with col2:
-        search_query = st.text_input("Search files:", placeholder="e.g., *.txt, document")
-        if st.button("🔍 Search", use_container_width=True):
-            if search_query:
-                results = search_files(search_query)
-                add_shell_log(f"Found {len(results)} files matching '{search_query}'", "SUCCESS")
-                st.rerun()
-    
-    st.divider()
 
-    # ====== WEB BROWSING + MEDIA ======
-    st.markdown("### 🌍 WEB CONTROL & MEDIA")
-    browse_col1, browse_col2, browse_col3 = st.columns([1, 1, 1])
+        st.divider()
+        
+        st.markdown("### 🚀 LAUNCH APPLICATIONS")
+        col1, col2 = st.columns(2)
+        with col1:
+            app_name = st.text_input("App to launch:", placeholder="e.g., notepad, calculator, chrome")
+            if st.button("🔗 Launch App", use_container_width=True):
+                if app_name:
+                    launch_app(app_name)
+                    st.rerun()
+        with col2:
+            search_query = st.text_input("Search files:", placeholder="e.g., *.txt, document")
+            if st.button("🔍 Search", use_container_width=True):
+                if search_query:
+                    results = search_files(search_query)
+                    add_shell_log(f"Found {len(results)} files matching '{search_query}'", "SUCCESS")
+                    st.rerun()
 
-    with browse_col1:
+    with page_tabs[1]:
+        st.markdown("### 🌐 Web Automation")
+        st.markdown("Use URL history and quick web actions to control browsing from ILLI.")
         url_input = st.text_input("URL or search query:", placeholder="e.g., youtube.com, openai.com, search cats")
-        if st.button("🌐 Open Website", use_container_width=True):
-            if url_input:
-                open_website(url_input)
+        video_query = st.text_input("YouTube search or direct URL:", placeholder="e.g., relax music video")
+        action_col1, action_col2, action_col3 = st.columns(3)
+        with action_col1:
+            if st.button("🌐 Open Website", use_container_width=True):
+                if url_input:
+                    open_website(url_input)
+                    st.rerun()
+        with action_col2:
+            if st.button("▶️ Play Video", use_container_width=True):
+                if video_query:
+                    play_video_on_youtube(video_query)
+                    st.rerun()
+        with action_col3:
+            if st.button("🔎 Search Web", use_container_width=True):
+                if url_input:
+                    open_website(url_input)
+                    st.rerun()
+
+        st.divider()
+        st.markdown("### 🔁 URL History")
+        history = get_url_history()
+        if history:
+            for idx, item in enumerate(history):
+                row_col1, row_col2 = st.columns([5, 1])
+                row_col1.markdown(f"{idx + 1}. [{item}]({item})")
+                if row_col2.button("Open", key=f"history_open_{idx}"):
+                    open_history_url(item)
+                    st.rerun()
+        else:
+            st.info("URL history is empty. Open a website to begin tracking.")
+
+        if st.button("🗑️ Clear URL History", use_container_width=True):
+            st.session_state.url_history = []
+            st.rerun()
+
+        st.divider()
+        st.markdown("### ⚡ Quick Browser Actions")
+        quick_col1, quick_col2, quick_col3, quick_col4 = st.columns(4)
+        with quick_col1:
+            if st.button("🔇 Mute Audio", use_container_width=True):
+                toggle_system_audio(True)
+                st.rerun()
+        with quick_col2:
+            if st.button("🔊 Unmute Audio", use_container_width=True):
+                toggle_system_audio(False)
+                st.rerun()
+        with quick_col3:
+            if st.button("🔒 Lock Screen", use_container_width=True):
+                lock_system()
+                st.rerun()
+        with quick_col4:
+            if st.button("🧠 Task Manager", use_container_width=True):
+                open_task_manager()
                 st.rerun()
 
-    with browse_col2:
-        video_query = st.text_input("YouTube search or URL:", placeholder="e.g., relax music video")
-        if st.button("▶️ Play Video", use_container_width=True):
-            if video_query:
-                play_video_on_youtube(video_query)
-                st.rerun()
-
-    with browse_col3:
-        if st.button("🔎 Search Web", use_container_width=True):
-            if url_input:
-                open_website(url_input)
-                st.rerun()
-
-    control_col1, control_col2, control_col3, control_col4 = st.columns(4)
-    with control_col1:
-        if st.button("🔇 Mute Audio", use_container_width=True):
-            toggle_system_audio(True)
-            st.rerun()
-    with control_col2:
-        if st.button("🔊 Unmute Audio", use_container_width=True):
-            toggle_system_audio(False)
-            st.rerun()
-    with control_col3:
-        if st.button("🔒 Lock Screen", use_container_width=True):
-            lock_system()
-            st.rerun()
-    with control_col4:
-        if st.button("🧠 Task Manager", use_container_width=True):
-            open_task_manager()
-            st.rerun()
+    with page_tabs[2]:
+        st.markdown("### 📰 Live News Feed")
+        st.markdown("Fetch real-time headlines from public news feeds and browse stories directly.")
+        source = st.selectbox("News Source:", ["Google News", "BBC News", "Reuters"], index=["Google News", "BBC News", "Reuters"].index(st.session_state.news_source) if st.session_state.news_source in ["Google News", "BBC News", "Reuters"] else 0)
+        st.session_state.news_source = source
+        if st.button("🔄 Refresh News", use_container_width=True):
+            st.session_state.news_feed = fetch_live_news(source)
+        if not st.session_state.news_feed:
+            st.info("No news loaded yet. Click Refresh News to load headlines.")
+        else:
+            for item in st.session_state.news_feed:
+                link = item.get("link", "")
+                title = item.get("title", "Untitled")
+                pub_date = item.get("pubDate", "")
+                if link:
+                    st.markdown(f"- [{title}]({link})  \n*{pub_date}*")
+                else:
+                    st.markdown(f"- {title}  \n*{pub_date}*")
 
     st.divider()
     
