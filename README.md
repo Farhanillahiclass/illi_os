@@ -54,6 +54,8 @@ illi-ai --launch
 
 Access the HUD at: **http://localhost:8501**
 
+- 📘 See the local repository wiki: [`WIKI.md`](WIKI.md)
+
 ---
 
 ## 🎨 Features
