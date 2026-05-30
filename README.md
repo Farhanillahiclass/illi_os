@@ -54,6 +54,13 @@ pip install -e .
 illi-ai --launch
 ```
 
+**Assistant Dispatch Script**
+```powershell
+python scripts\assistant_dispatcher.py --command "open chrome"
+python scripts\assistant_dispatcher.py --scan-apps
+python scripts\assistant_dispatcher.py --list-apps
+```
+
 Access the HUD at: **http://localhost:8501**
 
 This project is licensed under the MIT License. See `LICENSE` for details.
@@ -145,6 +152,8 @@ This project is licensed under the MIT License. See `LICENSE` for details.
 ✅ **News Ticker Widget** - scrolling breaking headlines for quick glance updates
 ✅ **Trending Topic Filters** - topic-aware news filtering on Google News
 ✅ **Trending Hashtag Sidebar** - auto-extracted headline keywords for one-click topic jumps
+✅ **Voice/Text Assistant Dispatcher** - natural language app, file, and web commands
+✅ **Installed App Discovery** - scans PATH, Program Files, AppData, and Start Menu apps
 ✅ **System Audio Control** - Mute/unmute audio from the HUD
 ✅ **Screen Lock & Task Manager** - Lock Windows screen and open Task Manager with one click
 ✅ **Dynamic Wallpaper Generation** - Hex-grid or red-grid patterns applied in real-time

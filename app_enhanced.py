@@ -23,6 +23,15 @@ from illi_ai.automation import (
     AutomationTask,
     TaskPriority
 )
+from illi_ai.assistant import (
+    get_installed_apps,
+    open_application,
+    find_youtube_video,
+    create_file,
+    delete_path,
+    open_file,
+    dispatch_command
+)
 from illi_ai.core import (
     LocalMemorySystem,
     MultiVoiceSynthesisEngine,
@@ -71,6 +80,10 @@ def init_session_state():
         st.session_state.hud_active = True
         st.session_state.active_tab = "Dashboard"
         st.session_state.tasks = []
+        st.session_state.installed_apps = {}
+        st.session_state.installed_apps_loaded = False
+        st.session_state.installed_apps_search = ""
+        st.session_state.command_response = ""
         st.session_state.shell_logs = []
         st.session_state.url_history = []
         st.session_state.news_feed = []
@@ -203,21 +216,51 @@ def parse_voice_command(command: str):
             memory.update_voice_preference(new_name)
             add_shell_log(f"User name updated to '{new_name}'", "SUCCESS")
             get_voice().speak_adaptive(f"Acknowledged. I will call you {new_name}")
-    elif "launch" in cmd_lower:
-        app_name = cmd_lower.split("launch", 1)[-1].strip()
-        add_shell_log(f"Launching: {app_name}", "INFO")
-        st.session_state.power_manager.launch_application(app_name)
-    elif "play video" in cmd_lower or "play youtube" in cmd_lower:
+    elif any(phrase in cmd_lower for phrase in ["create file", "make file", "new file", "create folder", "make folder", "new folder", "create directory"]):
+        match = re.search(r"(?:create|make|new)\s+(?:file|folder|directory)\s+(.+)", cmd_lower)
+        if match:
+            target_path = match.group(1).strip().strip('"')
+            if "folder" in cmd_lower or "directory" in cmd_lower:
+                success = create_file(target_path)
+                add_shell_log(f"Created directory: {target_path}" if success else f"Failed to create directory: {target_path}", "SUCCESS" if success else "ERROR")
+            else:
+                success = create_file(target_path)
+                add_shell_log(f"Created file: {target_path}" if success else f"Failed to create file: {target_path}", "SUCCESS" if success else "ERROR")
+    elif any(phrase in cmd_lower for phrase in ["delete file", "remove file", "delete folder", "remove folder", "delete directory", "remove directory"]):
+        match = re.search(r"(?:delete|remove|rm)\s+(?:file|folder|directory)\s+(.+)", cmd_lower)
+        if match:
+            target_path = match.group(1).strip().strip('"')
+            success = delete_path(target_path)
+            add_shell_log(f"Deleted: {target_path}" if success else f"Failed to delete: {target_path}", "SUCCESS" if success else "ERROR")
+    elif any(phrase in cmd_lower for phrase in ["open file", "view file", "show file", "open document", "open folder", "open directory"]):
+        match = re.search(r"(?:open|view|show)\s+(?:file|document|folder|directory)\s+(.+)", cmd_lower)
+        if match:
+            target_path = match.group(1).strip().strip('"')
+            success = open_file(target_path)
+            add_shell_log(f"Opened: {target_path}" if success else f"Failed to open: {target_path}", "SUCCESS" if success else "ERROR")
+    elif "launch" in cmd_lower or "start" in cmd_lower or ("open" in cmd_lower and not any(skip in cmd_lower for skip in ["open website", "open file", "open folder", "open directory", "open document", "open youtube", "youtube", "google", "search"])):
+        app_name = cmd_lower
+        for phrase in ["launch", "open", "start"]:
+            if phrase in app_name:
+                app_name = app_name.split(phrase, 1)[-1].strip()
+                break
+        if app_name:
+            add_shell_log(f"Launching: {app_name}", "INFO")
+            if open_application(app_name):
+                add_shell_log(f"{app_name} launched successfully", "SUCCESS")
+            else:
+                add_shell_log(f"Unable to launch: {app_name}", "ERROR")
+    elif "play video" in cmd_lower or "play youtube" in cmd_lower or "youtube" in cmd_lower:
         query = command.lower()
-        if "play video" in query:
-            query = query.split("play video", 1)[-1].strip()
-        elif "play youtube" in query:
-            query = query.split("play youtube", 1)[-1].strip()
+        for phrase in ["play video", "play youtube", "search youtube for", "youtube"]:
+            if phrase in query:
+                query = query.split(phrase, 1)[-1].strip()
+                break
         if not query:
             query = "trending videos"
         add_shell_log(f"Playing video: {query}", "INFO")
         play_video_on_youtube(query)
-    elif "open website" in cmd_lower or "browse to" in cmd_lower or "go to" in cmd_lower:
+    elif "open website" in cmd_lower or "browse to" in cmd_lower or "go to" in cmd_lower or "visit" in cmd_lower:
         query = command.lower()
         for phrase in ["open website", "browse to", "go to", "visit"]:
             if phrase in query:
@@ -252,6 +295,13 @@ def parse_voice_command(command: str):
         add_shell_log("Running system scan...", "INFO")
         report = st.session_state.power_manager.run_system_scan_report()
         add_shell_log(report, "SUCCESS")
+    else:
+        add_shell_log(f"Dispatching voice command: {command}", "INFO")
+        response = dispatch_command(command)
+        if response.get("success"):
+            add_shell_log(response.get("message", "Command completed."), "SUCCESS")
+        else:
+            add_shell_log(response.get("message", "Command not recognized."), "ERROR")
 
 def speak_status():
     """Speak current status"""
@@ -391,6 +441,39 @@ def open_website(url: str) -> str:
     return target
 
 
+def ensure_installed_apps() -> dict:
+    if not st.session_state.installed_apps_loaded:
+        st.session_state.installed_apps = get_installed_apps()
+        st.session_state.installed_apps_loaded = True
+        add_shell_log(f"Discovered {len(st.session_state.installed_apps)} installed applications.", "SUCCESS")
+    return st.session_state.installed_apps or {}
+
+
+def search_installed_apps(query: str) -> list:
+    apps = ensure_installed_apps()
+    normalized_query = normalize_app_name(query)
+    if not normalized_query:
+        return []
+    matches = [
+        (name, path)
+        for name, path in apps.items()
+        if normalized_query in name or all(term in name for term in normalized_query.split())
+    ]
+    return matches[:20]
+
+
+def handle_text_command(command: str):
+    if not command:
+        return
+    add_shell_log(f"Executing command: {command}", "INFO")
+    result = dispatch_command(command)
+    if result.get("success"):
+        add_shell_log(result.get("message", "Command completed."), "SUCCESS")
+    else:
+        add_shell_log(result.get("message", "Command failed."), "ERROR")
+    return result
+
+
 def play_video_on_youtube(query: str) -> str:
     trimmed = query.strip()
     if not trimmed:
@@ -398,7 +481,7 @@ def play_video_on_youtube(query: str) -> str:
     if "youtube.com/watch" in trimmed or "youtu.be" in trimmed:
         target = trimmed if trimmed.startswith("http") else f"https://{trimmed}"
     else:
-        target = f"https://www.youtube.com/results?search_query={quote_plus(trimmed)}"
+        target = find_youtube_video(trimmed) or f"https://www.youtube.com/results?search_query={quote_plus(trimmed)}"
     add_url_history(target)
     webbrowser.open_new_tab(target)
     add_shell_log(f"Playing YouTube: {target}", "SUCCESS")
@@ -442,8 +525,10 @@ def launch_app(app_name: str):
     """Launch application"""
     try:
         add_shell_log(f"Launching: {app_name}", "INFO")
-        st.session_state.power_manager.launch_application(app_name)
-        add_shell_log(f"{app_name} launched successfully", "SUCCESS")
+        if open_application(app_name):
+            add_shell_log(f"{app_name} launched successfully", "SUCCESS")
+        else:
+            add_shell_log(f"Launch failed: {app_name}", "ERROR")
     except Exception as e:
         add_shell_log(f"Launch error: {str(e)}", "ERROR")
 
@@ -621,6 +706,28 @@ def render_main_hud():
                 if url_input:
                     open_website(url_input)
                     st.rerun()
+
+        st.divider()
+        st.markdown("### 🧠 Command Assistant")
+        command_query = st.text_input(
+            "Assistant command:",
+            placeholder="e.g., open chrome, play video lofi beats, create file notes.txt, delete folder temp",
+            key="assistant_command"
+        )
+        if st.button("🧠 Execute Command", use_container_width=True):
+            if command_query:
+                handle_text_command(command_query)
+                st.rerun()
+
+        if st.button("🔎 Scan Installed Apps", use_container_width=True):
+            ensure_installed_apps()
+            st.rerun()
+
+        if st.session_state.installed_apps_loaded:
+            st.info(f"Installed apps discovered: {len(st.session_state.installed_apps)}")
+            with st.expander("Show detected apps", expanded=False):
+                for idx, (name, path) in enumerate(list(st.session_state.installed_apps.items())[:12]):
+                    st.markdown(f"- **{name}**: `{path}`")
 
         st.divider()
         st.markdown("### 🔁 URL History")

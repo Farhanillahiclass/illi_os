@@ -9,6 +9,12 @@ import traceback
 from pathlib import Path
 from datetime import datetime
 import json
+from illi_ai.assistant import (
+    get_installed_apps,
+    open_application,
+    dispatch_command,
+    find_youtube_video,
+)
 
 # ============================================================================
 # PAGE CONFIGURATION
@@ -79,6 +85,9 @@ def init_session():
         st.session_state.mic_calibration = AdaptiveMicrophoneCalibration()
         st.session_state.delete_protection = HandshakeDeleteProtection()
         st.session_state.master_agent = MasterAgentOrchestrator(max_workers=4)
+        st.session_state.installed_apps = {}
+        st.session_state.installed_apps_loaded = False
+        st.session_state.command_response = ""
         
         st.session_state.active_tab = "dashboard"
         st.session_state.tasks = []
@@ -177,6 +186,27 @@ def control_voice():
 # FEATURE: APPLICATION LAUNCHER
 # ============================================================================
 
+def ensure_installed_apps(force_refresh: bool = False):
+    if not st.session_state.installed_apps_loaded or force_refresh:
+        st.session_state.installed_apps = get_installed_apps()
+        st.session_state.installed_apps_loaded = True
+        add_shell_log(f"Discovered {len(st.session_state.installed_apps)} installed applications.", "SUCCESS")
+    return st.session_state.installed_apps
+
+
+def handle_text_command(command: str):
+    if not command:
+        return
+    add_shell_log(f"Assistant executing: {command}", "INFO")
+    response = dispatch_command(command)
+    if response.get("success"):
+        add_shell_log(response.get("message", "Command completed."), "SUCCESS")
+    else:
+        add_shell_log(response.get("message", "Command not recognized."), "ERROR")
+    st.session_state.command_response = response.get("message", "")
+    return response
+
+
 def control_launcher():
     """Application launcher"""
     st.subheader("🚀 Application Launcher")
@@ -188,10 +218,53 @@ def control_launcher():
     with col2:
         if st.button("Launch", use_container_width=True, key="btn_launch"):
             if app_name.strip():
-                if st.session_state.power_manager.launch_application(app_name):
+                if open_application(app_name):
                     add_shell_log(f"Launched: {app_name}", "SUCCESS")
                 else:
                     add_shell_log(f"Failed to launch: {app_name}", "ERROR")
+
+    st.divider()
+    st.markdown("### 🧠 Assistant Command")
+    command_input = st.text_input("Assistant command:", placeholder="e.g. open chrome, play video lo-fi beats, create file report.txt", key="input_assistant")
+    if st.button("Execute Assistant Command", use_container_width=True, key="btn_assistant_execute"):
+        if command_input.strip():
+            handle_text_command(command_input)
+            st.experimental_rerun()
+
+    if st.session_state.command_response:
+        st.info(st.session_state.command_response)
+
+    st.markdown("### 📦 Installed Applications")
+    scan_col1, scan_col2 = st.columns([3, 1])
+    with scan_col1:
+        installed_search = st.text_input("Search installed apps:", key="input_installed_search")
+    with scan_col2:
+        if st.button("Scan Apps", use_container_width=True, key="btn_scan_apps"):
+            ensure_installed_apps(force_refresh=True)
+            st.experimental_rerun()
+
+    if st.session_state.installed_apps_loaded:
+        matches = []
+        if installed_search.strip():
+            normalized = installed_search.strip().lower()
+            for name, path in st.session_state.installed_apps.items():
+                if normalized in name or normalized in path.lower():
+                    matches.append((name, path))
+        else:
+            matches = list(st.session_state.installed_apps.items())[:20]
+
+        if matches:
+            with st.expander(f"Detected apps ({len(matches)})", expanded=False):
+                for name, path in matches[:20]:
+                    row1, row2 = st.columns([6, 1])
+                    row1.markdown(f"**{name}** — `{path}`")
+                    if row2.button("Launch", key=f"launch_app_{name}"):
+                        if open_application(path):
+                            add_shell_log(f"Launched: {name}", "SUCCESS")
+                        else:
+                            add_shell_log(f"Failed to launch: {name}", "ERROR")
+        else:
+            st.info("No installed apps match the search or scan the app list.")
 
 # ============================================================================
 # FEATURE: FILE SEARCH
